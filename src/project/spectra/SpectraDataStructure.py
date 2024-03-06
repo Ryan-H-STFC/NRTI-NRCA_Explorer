@@ -25,6 +25,8 @@ from settings import params
 dataFilepath = params['dir_graphData']
 peakLimitFilepath = params['dir_peakLimitInfo']
 
+'''TEST'''
+
 
 class SpectraData:
     """
