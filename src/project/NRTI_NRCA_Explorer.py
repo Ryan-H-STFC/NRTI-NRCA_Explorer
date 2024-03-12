@@ -22,6 +22,7 @@ from PyQt6.QtCore import Qt, QModelIndex, QRegularExpression as QRegExp, pyqtSig
 from PyQt6.QtGui import QAction, QCursor, QRegularExpressionValidator as QRegExpValidator, QIcon
 
 from PyQt6.QtWidgets import (
+    QButtonGroup,
     QCheckBox,
     QColorDialog,
     QComboBox,
@@ -49,6 +50,8 @@ from PyQt6.QtWidgets import (
     QWidget,
 
 )
+from scipy.interpolate import interp1d
+
 from copy import deepcopy
 
 from pyparsing import Literal
@@ -76,8 +79,14 @@ from settings import params
 
 # todo - Incorporate multiprocessing and multithreading?
 
-# todo - Get Peak Limit Calculations working for minimas aswell, and saving to files
 # todo - Changing Peak Limits through menu updates the tableData
+
+# todo - Add menu for Importing as energy (eV) or tof (u)
+
+# todo - Add all peak limit calculations into a file and add a way to change between min and max tabledata, globally or
+# todo   per spectra.
+
+# todo -
 
 
 # ? Should this ask for the filepath or just be require to be in the format as seen in the repository,
@@ -164,7 +173,13 @@ class ExplorerGUI(QWidget):  # Acts just like QWidget class (like a template)
             height: 11px;
         }}
 
-        QLabel#numPeakLabel, #thresholdLabel, #orderlabel, #compoundLabel, #peakLabel, #gridOptionLabel{{
+        QLabel#numPeakLabel,
+              #thresholdLabel,
+              #orderlabel,
+              #compoundLabel,
+              #peakLabel,
+              #tableTypeLabel,
+              #gridOptionLabel{{
             font: 11pt 'Roboto Mono';
             color: {text_color};
         }}
@@ -664,14 +679,18 @@ class ExplorerGUI(QWidget):  # Acts just like QWidget class (like a template)
         peakOrderLabel = QLabel(self, text="Peak Order")
         peakOrderLabel.setObjectName('orderlabel')
 
-        radioBtnGroup = QGroupBox()
-        self.byIntegralCheck = QRadioButton(radioBtnGroup, text="By Integral")
+        peakOrderButtonGroup = QButtonGroup(self)
+        peakOrderButtonGroup.setObjectName("peakOrderButtonGroup")
+        self.byIntegralCheck = QRadioButton("By Integral")
         self.byIntegralCheck.setObjectName('orderByIntegral')
         self.byIntegralCheck.setChecked(True)
         self.byIntegralCheck.clicked.connect(self.onPeakOrderChange)
-        self.byPeakWidthCheck = QRadioButton(radioBtnGroup, text="By Peak Width")
+        self.byPeakWidthCheck = QRadioButton("By Peak Width")
         self.byPeakWidthCheck.setObjectName('orderByPeakW')
         self.byPeakWidthCheck.clicked.connect(self.onPeakOrderChange)
+
+        peakOrderButtonGroup.addButton(self.byIntegralCheck)
+        peakOrderButtonGroup.addButton(self.byPeakWidthCheck)
 
         peakCheckLayout.addWidget(self.byIntegralCheck)
         peakCheckLayout.addWidget(self.byPeakWidthCheck)
@@ -705,7 +724,7 @@ class ExplorerGUI(QWidget):  # Acts just like QWidget class (like a template)
             filename = os.fsdecode(file)
             if ".csv" not in filename[-4:]:
                 continue
-            filename = filename[:-4]
+            filename = filename[:-14]
             self.compoundNames.append(filename)
         self.compoundCombobox.addItems(self.compoundNames)
         compoundCreaterLayout.addWidget(compoundLabel)
@@ -714,6 +733,35 @@ class ExplorerGUI(QWidget):  # Acts just like QWidget class (like a template)
 
         sidebarLayout.addLayout(compoundCreaterLayout)
 
+        # * -----------------------------------------------
+
+        # ¦ ----------- Peak Table Option Group -----------
+
+        peakTableOptionLayout = QVBoxLayout()
+        peakTableOptionLayout.setSpacing(5)
+        peakTableOptionRadioLayout = QHBoxLayout()
+        peakTableOptionLayout.setSpacing(5)
+
+        peakTableOptionButtonGroup = QButtonGroup(self)
+        peakTableOptionButtonGroup.setObjectName("peakTableOptionButtonGroup")
+
+        peakTableOptionLabel = QLabel("Display Data")
+        peakTableOptionLabel.setObjectName("tableTypeLabel")
+        self.maxTableOptionRadio = QRadioButton("Maxima")
+        self.maxTableOptionRadio.setChecked(True)
+        self.maxTableOptionRadio.clicked.connect(self.onPeakTableOptionChange)
+        self.minTableOptionRadio = QRadioButton("Minima")
+        self.minTableOptionRadio.clicked.connect(self.onPeakTableOptionChange)
+
+        peakTableOptionButtonGroup.addButton(self.maxTableOptionRadio)
+        peakTableOptionButtonGroup.addButton(self.minTableOptionRadio)
+
+        peakTableOptionRadioLayout.addWidget(self.maxTableOptionRadio)
+        peakTableOptionRadioLayout.addWidget(self.minTableOptionRadio)
+        peakTableOptionLayout.addWidget(peakTableOptionLabel)
+        peakTableOptionLayout.addLayout(peakTableOptionRadioLayout)
+
+        sidebarLayout.addLayout(peakTableOptionLayout)
         # * -----------------------------------------------
 
         # ¦ ----------------- Plot Canvas -----------------
@@ -853,6 +901,15 @@ class ExplorerGUI(QWidget):  # Acts just like QWidget class (like a template)
         elementPeaks = ExtendedComboBox()
         elementPeaks.setValidator(QRegExpValidator(QRegExp("[+-]?([0-9]*[.])?[0-9]+")))
 
+        peakOptionLayout = QHBoxLayout()
+        maxOptionRadio = QRadioButton()
+        maxOptionRadio.setText("Maxima")
+        minOptionRadio = QRadioButton()
+        minOptionRadio.setText("Minima")
+        peakOptionLayout.addWidget(maxOptionRadio)
+        peakOptionLayout.addWidget(minOptionRadio)
+        maxOptionRadio.setChecked(True)
+
         firstLimitLayout = QHBoxLayout()
         firstLimitX = QLineEdit()
 
@@ -872,6 +929,7 @@ class ExplorerGUI(QWidget):  # Acts just like QWidget class (like a template)
         secondLimitLayout.addWidget(secondLimitX)
         secondLimitLayout.addWidget(secondLimitBtn)
 
+        optionsWindow.inputForm.addItem(peakOptionLayout)
         optionsWindow.inputForm.addRow(QLabel("Peak X-Coord:"), elementPeaks)
         optionsWindow.inputForm.addRow(QLabel("1st Limit X:"), firstLimitLayout)
         optionsWindow.inputForm.addRow(QLabel("2nd Limit X:"), secondLimitLayout)
@@ -886,25 +944,40 @@ class ExplorerGUI(QWidget):  # Acts just like QWidget class (like a template)
         optionsWindow.setWindowTitle("Edit Peaks for Substance")
         optionsWindow.mainLayout.setSizeConstraint(QLayout.SizeConstraint.SetFixedSize)
         optionsWindow.setLayout(optionsWindow.mainLayout)
-        elements = optionsWindow.elements
 
         ax = self.axPD if self.axPD is not None else self.ax
+        elements = optionsWindow.elements
 
         def onAccept():
 
-            elementName = elements.itemText(elements.currentIndex() or 0)
-            peak = float(elementPeaks.currentText())
-            leftLimit = float(firstLimitX.placeholderText() if firstLimitX.text(
+            elementName: str = elements.itemText(elements.currentIndex() or 0)
+            element: SpectraData = self.spectraData[elementName]
+            which: str = 'max' if maxOptionRadio.isChecked() else 'min'
+            peak: float = float(elementPeaks.currentText())
+            leftLimitX = float(firstLimitX.placeholderText() if firstLimitX.text(
             ) == '' else firstLimitX.text())
-            rightLimit = float(secondLimitX.placeholderText() if secondLimitX.text(
+
+            rightLimitX = float(secondLimitX.placeholderText() if secondLimitX.text(
             ) == '' else secondLimitX.text())
 
-            result = self.spectraData[elementName].peakIntegral(leftLimit, rightLimit)
-            print("\n")
-            print(f"Peak: {peak}\n")
-            print(f"Integral: {result}")
+            interpGraphData = interp1d(element.graphData[0], element.graphData[1])
+            leftLimitY = interpGraphData(leftLimitX)
+            rightLimitY = interpGraphData(rightLimitX)
+
+            if which == 'max':
+
+                element.maxPeakLimitsX[peak] = (leftLimitX, rightLimitX)
+                element.maxPeakLimitsY[peak] = (leftLimitY, rightLimitY)
+
+            else:
+
+                element.minPeakLimitsX[peak] = (leftLimitX, rightLimitX)
+                element.minPeakLimitsY[peak] = (leftLimitY, rightLimitY)
+
             self.figure.canvas.mpl_disconnect(optionsWindow.motionEvent)
             self.figure.canvas.mpl_disconnect(optionsWindow.buttonPressEvent)
+            element.recalculatePeakData(which=which)
+            self.addTableData(reset=True)
         applyBtn.clicked.connect(onAccept)
 
         def onClose():
@@ -913,42 +986,129 @@ class ExplorerGUI(QWidget):  # Acts just like QWidget class (like a template)
             optionsWindow.close()
         cancelBtn.clicked.connect(onClose)
 
-        def onElementChange(index):
+        def onPeakOptionChange():
 
-            element = self.spectraData.get(elements.currentText(), False)
+            elements.blockSignals(True)
             elementPeaks.blockSignals(True)
-            firstLimitX.setText(None)
-            secondLimitX.setText(None)
-            elementPeaks.clear()
+            maxOptionRadio.blockSignals(True)
+            minOptionRadio.blockSignals(True)
+            element = self.spectraData.get(elements.currentText(), False)
+
             if not element:
                 elements.lineEdit().setText(None)
                 elements.setCurrentIndex(0)
                 return
-
-            if element.maxima[0].size == 0 or element.maxPeakLimitsX == {}:
+            if (maxOptionRadio.isChecked() and (element.maxima[0].size == 0 or element.maxPeakLimitsX == {})) or (
+                    minOptionRadio.isChecked() and (element.minima[0].size == 0 or element.minPeakLimitsX == {})):
                 elementPeaks.setEnabled(False)
                 firstLimitX.setEnabled(False)
                 secondLimitX.setEnabled(False)
                 applyBtn.setEnabled(False)
+                applyBtn.setToolTip("No peaks detected.")
                 firstLimitBtn.setEnabled(False)
                 secondLimitBtn.setEnabled(False)
                 elementPeaks.setCurrentText("Null")
                 firstLimitX.setPlaceholderText("Null")
                 secondLimitX.setPlaceholderText("Null")
                 elementPeaks.blockSignals(False)
-
+                maxOptionRadio.blockSignals(False)
+                minOptionRadio.blockSignals(False)
                 return
+
             elementPeaks.setEnabled(True)
             firstLimitX.setEnabled(True)
             secondLimitX.setEnabled(True)
             firstLimitBtn.setEnabled(True)
             secondLimitBtn.setEnabled(True)
-            elementPeaks.addItems([str(peak) for peak in element.maxima[0] if element.maxPeakLimitsX.get(peak, False)])
+            applyBtn.setEnabled(True)
+            applyBtn.setToolTip(None)
+
+            elementPeaks.clear()
+            if maxOptionRadio.isChecked():
+                elementPeaks.addItems([str(peak) for peak in element.maxima[0]
+                                       if element.maxPeakLimitsX.get(peak, False)])
+                peak = float(elementPeaks.currentText())
+
+                firstLimitX.setPlaceholderText(str(element.maxPeakLimitsX[peak][0]))
+                secondLimitX.setPlaceholderText(str(element.maxPeakLimitsX[peak][1]))
+            else:
+                elementPeaks.addItems([str(peak) for peak in element.minima[0]
+                                       if element.minPeakLimitsX.get(peak, False)])
+                peak = float(elementPeaks.currentText())
+                firstLimitX.setPlaceholderText(str(element.minPeakLimitsX[peak][0]))
+                secondLimitX.setPlaceholderText(str(element.minPeakLimitsX[peak][1]))
+
+            elements.blockSignals(False)
             elementPeaks.blockSignals(False)
+            maxOptionRadio.blockSignals(False)
+            minOptionRadio.blockSignals(False)
+        maxOptionRadio.clicked.connect(onPeakOptionChange)
+        minOptionRadio.clicked.connect(onPeakOptionChange)
+
+        def onElementChange(index):
+
+            elements.blockSignals(True)
+            elementPeaks.blockSignals(True)
+            maxOptionRadio.blockSignals(True)
+            minOptionRadio.blockSignals(True)
+            firstLimitX.setText(None)
+            secondLimitX.setText(None)
+            element = self.spectraData.get(elements.currentText(), False)
+
+            elementPeaks.clear()
+            if not element:
+                elements.lineEdit().setText(None)
+                elements.setCurrentIndex(0)
+                return
+
+            if (maxOptionRadio.isChecked() and (element.maxima[0].size == 0 or element.maxPeakLimitsX == {})) or (
+                    minOptionRadio.isChecked() and (element.minima[0].size == 0 or element.minPeakLimitsX == {})):
+                elementPeaks.setEnabled(False)
+                firstLimitX.setEnabled(False)
+                secondLimitX.setEnabled(False)
+                applyBtn.setEnabled(False)
+                applyBtn.setToolTip("No peaks detected.")
+                firstLimitBtn.setEnabled(False)
+                secondLimitBtn.setEnabled(False)
+                elementPeaks.setCurrentText("Null")
+                firstLimitX.setPlaceholderText("Null")
+                secondLimitX.setPlaceholderText("Null")
+                elementPeaks.blockSignals(False)
+                maxOptionRadio.blockSignals(False)
+                minOptionRadio.blockSignals(False)
+                return
+
+            elementPeaks.setEnabled(True)
+            firstLimitX.setEnabled(True)
+            secondLimitX.setEnabled(True)
+            firstLimitBtn.setEnabled(True)
+            secondLimitBtn.setEnabled(True)
+            applyBtn.setEnabled(True)
+            applyBtn.setToolTip(None)
+
+            elementPeaks.clear()
+            if maxOptionRadio.isChecked():
+                elementPeaks.addItems([str(peak) for peak in element.maxima[0]
+                                      if element.maxPeakLimitsX.get(peak, False)])
+            else:
+                elementPeaks.addItems([str(peak) for peak in element.minima[0]
+                                       if element.minPeakLimitsX.get(peak, False)])
+
+            elements.blockSignals(False)
+            elementPeaks.blockSignals(False)
+            maxOptionRadio.blockSignals(False)
+            minOptionRadio.blockSignals(False)
 
             onPeakChange(elements.currentIndex())
+        elements.currentIndexChanged.connect(
+            lambda: onElementChange(index=elements.currentIndex()))
 
         def onPeakChange(index):
+
+            elements.blockSignals(True)
+            elementPeaks.blockSignals(True)
+            maxOptionRadio.blockSignals(True)
+            minOptionRadio.blockSignals(True)
 
             element = self.spectraData.get(elements.currentText(), False)
             if not element or elementPeaks.currentText() == '':
@@ -956,20 +1116,34 @@ class ExplorerGUI(QWidget):  # Acts just like QWidget class (like a template)
                 elements.setCurrentIndex(0)
                 elementPeaks.setCurrentIndex(0)
                 return
+
             firstLimitX.setText(None)
             secondLimitX.setText(None)
-            if element.maxPeakLimitsX == {}:
+            if (maxOptionRadio.isChecked() and (element.maxima[0].size == 0 or element.maxPeakLimitsX == {})) or (
+                    minOptionRadio.isChecked() and (element.minima[0].size == 0 or element.minPeakLimitsX == {})):
                 elements.setCurrentIndex(0)
                 elementPeaks.setCurrentText("Null")
                 firstLimitX.setPlaceholderText("Null")
                 secondLimitX.setPlaceholderText("Null")
                 applyBtn.setEnabled(False)
+                applyBtn.setToolTip("No peaks detected.")
                 return
-            applyBtn.setEnabled(True)
-            peak = float(elementPeaks.currentText())
-            firstLimitX.setPlaceholderText(str(element.maxPeakLimitsX[peak][0]))
-            secondLimitX.setPlaceholderText(str(element.maxPeakLimitsX[peak][1]))
 
+            elementPeaks.setEnabled(True)
+            firstLimitX.setEnabled(True)
+            secondLimitX.setEnabled(True)
+            firstLimitBtn.setEnabled(True)
+            secondLimitBtn.setEnabled(True)
+            applyBtn.setEnabled(True)
+            applyBtn.setToolTip(None)
+
+            peak = float(elementPeaks.currentText())
+            if maxOptionRadio.isChecked():
+                firstLimitX.setPlaceholderText(str(element.maxPeakLimitsX[peak][0]))
+                secondLimitX.setPlaceholderText(str(element.maxPeakLimitsX[peak][1]))
+            else:
+                firstLimitX.setPlaceholderText(str(element.minPeakLimitsX[peak][0]))
+                secondLimitX.setPlaceholderText(str(element.minPeakLimitsX[peak][1]))
             try:
                 optionsWindow.blittedCursor.on_remove()
                 del optionsWindow.blitterCursor
@@ -977,18 +1151,31 @@ class ExplorerGUI(QWidget):  # Acts just like QWidget class (like a template)
             except AttributeError:
                 pass
 
-        def onLimitChange():
+            elements.blockSignals(False)
+            elementPeaks.blockSignals(False)
+            maxOptionRadio.blockSignals(False)
+            minOptionRadio.blockSignals(False)
+        elementPeaks.currentIndexChanged.connect(lambda: onPeakChange(elements.currentIndex()))
 
-            limitLeft = firstLimitX.placeholderText() if firstLimitX.text(
+        def onLimitChange():
+            element: SpectraData = self.spectraData.get(elements.currentText(), False)
+            leftlimit: str = firstLimitX.placeholderText() if firstLimitX.text(
             ) == '' else firstLimitX.text()
-            limitRight = secondLimitX.placeholderText() if secondLimitX.text(
+            rightLimit: str = secondLimitX.placeholderText() if secondLimitX.text(
             ) == '' else secondLimitX.text()
-            peak = float(elementPeaks.currentText())
-            if limitLeft == 'Null' or limitRight == 'Null':
+            peak: float = float(elementPeaks.currentText())
+
+            if leftlimit == 'Null' or rightLimit == 'Null':
                 applyBtn.setEnabled(False)
+                applyBtn.setToolTip("Limits cannot be Null.")
                 return
-            if float(limitLeft) > peak or float(limitRight) < peak:
+            if float(leftlimit) > peak or float(rightLimit) < peak:
                 applyBtn.setEnabled(False)
+                applyBtn.setToolTip("Invalid integral region.")
+                return
+            if float(leftlimit) < element.graphData[0].min() or float(rightLimit) > element.graphData[0].max():
+                applyBtn.setEnabled(False)
+                applyBtn.setToolTip("Limits exceed maximum or minimum of spectra.")
                 return
             try:
                 optionsWindow.blittedCursor.on_remove()
@@ -1000,6 +1187,9 @@ class ExplorerGUI(QWidget):  # Acts just like QWidget class (like a template)
                 if 'cursor' in line.get_gid():
                     line.remove()
             applyBtn.setEnabled(True)
+            applyBtn.setToolTip(None)
+        firstLimitX.textChanged.connect(onLimitChange)
+        secondLimitX.textChanged.connect(onLimitChange)
 
         def onLimitSelect(event):
             if not optionsWindow.blittedCursor.valid:
@@ -1031,12 +1221,6 @@ class ExplorerGUI(QWidget):  # Acts just like QWidget class (like a template)
             optionsWindow.buttonPressEvent = self.figure.canvas.mpl_connect("button_press_event", onLimitSelect)
         firstLimitBtn.pressed.connect(lambda: connectLimitSelect(firstLimitBtn))
         secondLimitBtn.pressed.connect(lambda: connectLimitSelect(secondLimitBtn))
-
-        optionsWindow.elements.currentIndexChanged.connect(
-            lambda: onElementChange(index=optionsWindow.elements.currentIndex()))
-        elementPeaks.currentIndexChanged.connect(lambda: onPeakChange(elements.currentIndex()))
-        firstLimitX.textChanged.connect(onLimitChange)
-        secondLimitX.textChanged.connect(onLimitChange)
 
         onElementChange(elements.currentIndex())
         optionsWindow.setModal(False)
@@ -1731,11 +1915,11 @@ class ExplorerGUI(QWidget):  # Acts just like QWidget class (like a template)
             if compoundElements == {}:
                 compoundMode.append(elementName.split('_')[-1])
 
-                elements.blockSignals(True)
+                optionsWindow.elements.blockSignals(True)
                 elementNames = elements.getAllItemText()
                 elements.clear()
                 elements.addItems([name for name in elementNames if compoundMode[0] in name])
-                elements.blockSignals(False)
+                optionsWindow.elements.blockSignals(False)
 
             totalLabel.setStyleSheet("color: #FFF;")
 
@@ -2056,8 +2240,12 @@ class ExplorerGUI(QWidget):  # Acts just like QWidget class (like a template)
         # Finding relevant file for peak information
         filepath = None
         for file in os.listdir(params['dir_peakInfo']):
-            if self.selectionName == file.split(".")[0]:
-                filepath = params['dir_peakInfo'] + file
+            if self.selectionName in file:
+                filepath = f"""{
+                    params['dir_peakInfo']
+                    }{
+                        file[:-7]
+                        }{'max' if self.maxTableOptionRadio.isChecked() else 'min'}.csv"""
                 break
         try:
             for row in self.table_model.titleRows:
@@ -2082,7 +2270,7 @@ class ExplorerGUI(QWidget):  # Acts just like QWidget class (like a template)
             self.table.setSortingEnabled(True)
             self.table.sortByColumn(0, Qt.SortOrder.AscendingOrder)
 
-        except ValueError:
+        except (ValueError, FileNotFoundError):
 
             self.table.setModel(None)
             self.numRows = None
@@ -2220,9 +2408,9 @@ class ExplorerGUI(QWidget):  # Acts just like QWidget class (like a template)
                 pass
 
             try:
-                elementTableData = pd.read_csv(f"{peakInfoDir}{spectraName}.csv")
+                elementTableDataMax = pd.read_csv(f"{peakInfoDir}{spectraName}_tableData_max.csv")
             except FileNotFoundError:
-                elementTableData = pd.DataFrame(
+                elementTableDataMax = pd.DataFrame(
                     columns=[
                         "Rank by Integral",
                         "Energy (eV)",
@@ -2236,13 +2424,37 @@ class ExplorerGUI(QWidget):  # Acts just like QWidget class (like a template)
                         "Relevant Isotope"
                     ])
             # Title Rows
-            if elementTableData.empty:
-                elementTableData.loc[-1] = [f"No Peak Data for {spectraName}", *[""] * 9]
+            if elementTableDataMax.empty:
+                elementTableDataMax.loc[-1] = [f"No Peak Data for {spectraName}", *[""] * 9]
 
             else:
-                elementTableData.loc[-1] = [spectraName, *[""] * 9]
-            elementTableData.index += 1
-            elementTableData.sort_index(inplace=True)
+                elementTableDataMax.loc[-1] = [spectraName, *[""] * 9]
+            elementTableDataMax.index += 1
+            elementTableDataMax.sort_index(inplace=True)
+            try:
+                elementTableDataMin = pd.read_csv(f"{peakInfoDir}{spectraName}_tableData_min.csv")
+            except FileNotFoundError:
+                elementTableDataMin = pd.DataFrame(
+                    columns=[
+                        "Rank by Integral",
+                        "Energy (eV)",
+                        "Rank by Energy",
+                        "TOF (us)",
+                        "Integral",
+                        "Peak Width",
+                        "Rank by Peak Width",
+                        "Peak Height",
+                        "Rank by Peak Height",
+                        "Relevant Isotope"
+                    ])
+            # Title Rows
+            if elementTableDataMin.empty:
+                elementTableDataMin.loc[-1] = [f"No Peak Data for {spectraName}", *[""] * 9]
+
+            else:
+                elementTableDataMin.loc[-1] = [spectraName, *[""] * 9]
+            elementTableDataMin.index += 1
+            elementTableDataMin.sort_index(inplace=True)
 
             if self.spectraData.get(title, False):
                 for point in self.spectraData[title].annotations:
@@ -2250,7 +2462,8 @@ class ExplorerGUI(QWidget):  # Acts just like QWidget class (like a template)
 
             newSpectra = SpectraData(name=spectraName,
                                      numPeaks=self.numRows,
-                                     tableData=elementTableData,
+                                     tableDataMax=elementTableDataMax,
+                                     tableDataMin=elementTableDataMin,
                                      graphData=graphData,
                                      graphColour=getRandomColor(),
                                      isToF=tof,
@@ -2290,7 +2503,7 @@ class ExplorerGUI(QWidget):  # Acts just like QWidget class (like a template)
         if redrawMin:
             self.plottingPD(newSpectra, False)
 
-        self.addTableData()
+        self.onPeakTableOptionChange()
 
         self.canvas.draw()
 
@@ -2646,6 +2859,13 @@ class ExplorerGUI(QWidget):  # Acts just like QWidget class (like a template)
         for element in self.spectraData.values():
             self.drawAnnotations(element)
 
+    def onPeakTableOptionChange(self) -> None:
+
+        which = 'max' if self.maxTableOptionRadio.isChecked() else 'min'
+        for spectra in self.spectraData.values():
+            spectra.changePeakTableData(which)
+        self.addTableData(True)
+
     def drawAnnotations(self, element: SpectraData) -> None:
         """
         ``drawAnnotations``
@@ -2820,12 +3040,18 @@ class ExplorerGUI(QWidget):  # Acts just like QWidget class (like a template)
                                                                 index=False,
                                                                 header=False)
                 if saveTable:
-                    self.spectraData[name].tableData[1:].to_csv(f'{exportDir}/{name}_tableData.csv',
-                                                                index=False)
+                    self.spectraData[name].maxTableData[1:].to_csv(f'{exportDir}/{name}_tableData_max.csv',
+                                                                   index=False)
+                    self.spectraData[name].minTableData[1:].to_csv(f'{exportDir}/{name}_tableData_min.csv',
+                                                                   index=False)
 
                 if saveLimit:
                     pd.DataFrame(self.spectraData[name].maxPeakLimitsX.values()
-                                 ).to_csv(f'{exportDir}/{name}_peakLimits.csv',
+                                 ).to_csv(f'{exportDir}/{name}_peakLimits_max.csv',
+                                          header=False,
+                                          index=False)
+                    pd.DataFrame(self.spectraData[name].minPeakLimitsX.values()
+                                 ).to_csv(f'{exportDir}/{name}_peakLimits_min.csv',
                                           header=False,
                                           index=False)
 
@@ -2957,7 +3183,7 @@ class ExplorerGUI(QWidget):  # Acts just like QWidget class (like a template)
         # ! Change how points are then plotted
         # Redrawing graph and Peak Detection Limits
         self.ax.set_visible(False)
-        spectraData.tableData = spectraData.maxTableData.copy() if isMax else spectraData.minTableData.copy()
+        spectraData.changePeakTableData('max' if isMax else 'min')
         self.addTableData(reset=True)
         if self.axPD is None:
             self.axPD = self.figure.add_subplot(111)
@@ -3125,18 +3351,13 @@ def main() -> None:
     app = QtWidgets.QApplication(sys.argv)
     app.setObjectName('MainWindow')
 
-    # app.setStyle('Fusion')
     QtGui.QFontDatabase.addApplicationFont('src\\fonts\\RobotoMono-Thin.ttf')
     QtGui.QFontDatabase.addApplicationFont('src\\fonts\\RobotoMono-Regular.ttf')
     QtGui.QFontDatabase.addApplicationFont('src\\fonts\\RobotoMono-Medium.ttf')
-    Colours = QtGui.QPalette()
-    # Colours.setColor(QtGui.QPalette.Window, QtGui.QColor("#393939"))
-    # Colours.setColor(QtGui.QPalette.Button, QtGui.QColor("#FFF"))
 
     app.setWindowIcon(QIcon("./src/img/final_logo.png"))
 
     _ = ExplorerGUI()
-    app.setPalette(Colours)
     app.exec()
 
 

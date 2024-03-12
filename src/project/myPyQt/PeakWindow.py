@@ -146,8 +146,9 @@ class PeakWindow(QMainWindow):
             QMessageBox.warning(self, "Warning", "Plot the Graph First")
 
         rank = [str([ann[0] for ann in element.annotationsOrder.items() if ann[1][0] == maxima[0]][0])]
-        limits = [str(element.maxPeakLimitsX[maxima[0]])]
-        peakCoords = [f"({maxima[0]}, {maxima[1]})"]
+        lims = element.maxPeakLimitsX[maxima[0]]
+        limits = [f"({lims[0]:.6g}, {lims[1]:.6g})"]
+        peakCoords = [f"({maxima[0]:.6g}, {maxima[1]:.6g})"]
         isoOrigin = [parent.table_model.data(parent.table_model.index(index.row(), 9), 0)]
         data = {"Peak Number (Rank)": rank,
                 "Integration Limits (eV)": limits,
