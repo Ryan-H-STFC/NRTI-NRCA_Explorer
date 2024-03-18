@@ -5,10 +5,6 @@ from pyparsing import Literal
 from scipy.interpolate import interp1d
 import pandas
 from pandas import DataFrame
-from multiprocessing import Pool
-from concurrent.futures import ProcessPoolExecutor
-from concurrent import futures
-from more_itertools import grouper
 
 from spectra.PeakDetection import PeakDetector
 from helpers.getSpacedElements import getSpacedElements
@@ -17,15 +13,12 @@ from helpers.getIndex import getIndex
 from helpers.integration import integrate_simps
 from helpers.nearestNumber import nearestnumber
 from helpers.smooth import smooth
-from helpers.splitProcessing import splitProcess
 from time import perf_counter
 from settings import params
 
 
 dataFilepath = params['dir_graphData']
 peakLimitFilepath = params['dir_peakLimitInfo']
-
-'''TEST'''
 
 
 class SpectraData:
@@ -48,7 +41,8 @@ class SpectraData:
     plotType: str
 
     annotations: list
-    annotationsOrder: dict
+    maxAnnotationOrder: dict
+    minAnnotationOrder: dict
     threshold: float = 100.0
     length: dict[float] = None
 
@@ -100,7 +94,8 @@ class SpectraData:
         self.defaultDist = defaultDist
         self.isCompound = isCompound
         self.annotations = []
-        self.annotationsOrder = {}
+        self.maxAnnotationOrder = {}
+        self.minAnnotationOrder = {}
         self.maxPeakLimitsX = {}
         self.maxPeakLimitsY = {}
         self.minPeakLimitsX = {}
@@ -147,7 +142,6 @@ class SpectraData:
             if not self.isDistAltered:
                 name = self.name[8:] if 'element' in self.name else self.name
                 maxLimits = pandas.read_csv(f"{peakLimitFilepath}{name}_max.csv", names=['left', 'right'])
-
                 if self.isToF:
                     # Convert Limit coords to TOF
                     maxLimits['left'] = self.energyToTOF(maxLimits['left'], self.length)
@@ -161,9 +155,8 @@ class SpectraData:
                     self.maxPeakLimitsX[max] = (lim['left'].iloc[0], lim['right'].iloc[0])
                     leftLimit = nearestnumber(graphData[0], lim['left'].iloc[0])
                     rightLimit = nearestnumber(graphData[0], lim['right'].iloc[0])
-
-                    self.maxPeakLimitsY[max] = (graphData[graphData[0] == leftLimit].iloc[0, 1],
-                                                graphData[graphData[0] == rightLimit].iloc[0, 1])
+                    interpGraphData = interp1d(graphData[0], graphData[1])
+                    self.maxPeakLimitsY[max] = (interpGraphData(leftLimit), interpGraphData(rightLimit))
 
         except ValueError:
             # Catches invalid maximas produced by scipy.signal.find_peaks
@@ -194,7 +187,6 @@ class SpectraData:
 
         try:
             minLimits = pandas.read_csv(f"{peakLimitFilepath}{name}_min.csv", names=['left', 'right'])
-
             if self.isToF:
                 minLimits['left'] = self.energyToTOF(minLimits['left'], self.length)
                 minLimits['right'] = self.energyToTOF(minLimits['right'], self.length)
@@ -435,7 +427,7 @@ class SpectraData:
             point.set_visible(boolCheck)
         self.isAnnotationsHidden = boolCheck
 
-    def orderAnnotations(self, byIntegral: bool = True) -> None:
+    def orderAnnotations(self, which: Literal['max', 'min'] = 'max', byIntegral: bool = True) -> None:
         """
         ``orderAnnotations``
         --------------------
@@ -446,34 +438,48 @@ class SpectraData:
         Args:
             - ``byIntegral`` (bool, optional): Sorted by Integral (True) else by Peak Width (False). Defaults to True.
         """
-        self.annotationsOrder.clear()
-        if self.numPeaks == 0:
+        if which == 'max':
+            self.maxAnnotationOrder.clear()
+        else:
+            self.minAnnotationOrder.clear()
+
+        if self.maxima.size == 0 and which == 'max':
             return
+        if self.minima.size == 0 and which == 'min':
+            return
+
         if self.isImported:
             return
 
-        if self.maxTableData[1:].empty:
+        tableData = self.maxTableData if which == 'max' else self.minTableData
+        peaks = self.maxima if which == 'max' else self.minima
+        numPeaks = self.maxima.shape[1] if which == 'max' else self.minima.shape[1]
+        if tableData[1:].empty:
             return
 
         rankCol = "Rank by Integral" if byIntegral else "Rank by Peak Width"
         xCol = "TOF (us)" if self.isToF else "Energy (eV)"
         yCol = "Peak Height"
-        for i in range(self.numPeaks):
+        for i in range(numPeaks):
             if byIntegral:
-                row = self.maxTableData[1:].loc[
-                    (self.maxTableData[rankCol][1:] == i)
+                row = tableData[1:].loc[
+                    (tableData[rankCol][1:] == i)
                 ]
             else:
-                row = self.maxTableData[1:].loc[
-                    (self.maxTableData[rankCol][1:] == f'({i})')
+                row = tableData[1:].loc[
+                    (tableData[rankCol][1:] == f'({i})')
                 ]
 
             if row.empty:
                 continue
             else:
-                max_x = nearestnumber(self.maxima[0], row[xCol].iloc[0])
-                max_y = nearestnumber(self.maxima[1], row[yCol].iloc[0])
-            self.annotationsOrder[i] = (max_x, max_y)
+                peakX = nearestnumber(peaks[0], row[xCol].iloc[0])
+                peakY = nearestnumber(peaks[1], row[yCol].iloc[0])
+
+            if which == 'max':
+                self.maxAnnotationOrder[i] = (peakX, peakY)
+            else:
+                self.minAnnotationOrder[i] = (peakX, peakY)
 
     def peakIntegral(self, leftLimit: float, rightLimit: float,
                      which: Literal['max', 'min'] = 'max') -> tuple[float, str]:
@@ -507,7 +513,8 @@ class SpectraData:
                     isoGraphData[name] = graphData
             integrals = dict()
             for name, graphData in isoGraphData.items():
-
+                if leftLimit == rightLimit:
+                    return (0, '[]')
                 graphDataInterp = interp1d(graphData.iloc[:, 0], graphData.iloc[:, 1])
                 xRange = np.arange(leftLimit, rightLimit, (rightLimit - leftLimit) / 100)
                 integrals[name] = integrate_simps(DataFrame(list(zip(xRange, graphDataInterp(xRange))),
@@ -518,6 +525,8 @@ class SpectraData:
 
             return (sum(integrals.values()), f"['{max(integrals, key=integrals.get)}_{self.plotType}']")
         else:
+            if leftLimit == rightLimit:
+                return (0, 'none')
             return (integrate_simps(self.graphData, leftLimit, rightLimit, which), 'none')
 
     def definePeaks(self, which: Literal['max', 'min'] = 'max') -> None:

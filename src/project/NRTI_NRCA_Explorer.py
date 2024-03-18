@@ -6,14 +6,7 @@ import pandas as pd
 import matplotlib.rcsetup
 import matplotlib.pyplot as plt
 from matplotlib.ticker import LogLocator, LogFormatterSciNotation
-
-
 matplotlib.use('QtAgg')
-
-# from matplotlib.backends.backend_qt5agg import (
-#     FigureCanvasQTAgg as FigureCanvas,
-# )
-
 from matplotlib.backends.backend_qt5agg import (
     NavigationToolbar2QT as NavigationToolbar
 )
@@ -47,13 +40,11 @@ from PyQt6.QtWidgets import (
     QSplitter,
     QTableView,
     QVBoxLayout,
-    QWidget,
-
+    QWidget
 )
 from scipy.interpolate import interp1d
 
 from copy import deepcopy
-
 from pyparsing import Literal
 
 from spectra.SpectraDataStructure import SpectraData
@@ -75,18 +66,15 @@ from settings import params
 # todo ------------------------------------------- Issues/Feature TODO list -------------------------------------------
 # todo - Add periodic table GUI for selection.
 
-# todo - Matplotlib icons
+# todo - Matplotlib icons.
 
 # todo - Incorporate multiprocessing and multithreading?
 
-# todo - Changing Peak Limits through menu updates the tableData
+# todo - Add menu for Importing as energy (eV) or tof (u).
 
-# todo - Add menu for Importing as energy (eV) or tof (u)
+# todo - Peak Limit editting shows the currently selected peak and its limits graphically, and updates on apply.
 
-# todo - Add all peak limit calculations into a file and add a way to change between min and max tabledata, globally or
-# todo   per spectra.
-
-# todo -
+# todo - Annotations for minimas.
 
 
 # ? Should this ask for the filepath or just be require to be in the format as seen in the repository,
@@ -373,43 +361,41 @@ class ExplorerGUI(QWidget):  # Acts just like QWidget class (like a template)
         """
 
         # Setting glo bal variables
-        self.selectionName = None
-        self.numRows = None
+        self.selectionName: str = None
+        self.numRows: int = None
 
-        self.ax = None
-        self.axPD = None
+        self.ax: plt.axes = None
+        self.axPD: plt.axes = None
 
-        self.plotCount = -1
-        self.annotations = []
-        self.localHiddenAnnotations = []
-        self.plottedSpectra = []
-        self.spectraNames = None
+        self.plotCount: int = -1
+        self.annotations: list[matplotlib.text.Annotations] = []
+        self.localHiddenAnnotations: list[matplotlib.text.Annotations] = []
+        self.plottedSpectra: list[tuple[str, bool]] = []
+        self.spectraNames: list[str] = None
 
-        self.gridSettings = params['grid_settings']
+        self.orderByIntegral: bool = True
+        self.spectraData: dict = dict()
+        self.elementDataNames: list[str] = []
 
-        self.orderByIntegral = True
-        self.spectraData = dict()
-        self.elementDataNames = []
+        self.compoundData: dict[SpectraData] = dict()
+        self.isCompound: bool = False
 
-        self.compoundData = dict()
-        self.isCompound = False
+        self.gridSettings: dict[str] = params['grid_settings']
+        self.maxPeak: int = params['max_annotations']
+        self.length: dict[float] = params['length']
 
-        self.maxPeak = params['max_annotations']
-        self.length = params['length']
+        self.dir: str = params['dir_project']
+        self.graphDataDir: str = params['dir_graphData']
+        self.distributionDir: str = params['dir_distribution']
+        self.plotFilepath: str = None
 
-        self.dir = params['dir_project']
-        # self.dir = f"{os.path.dirname(__file__)}\\"
-        self.graphDataDir = params['dir_graphData']
-        self.distributionDir = params['dir_distribution']
-        self.plotFilepath = None
+        self.defaultDistributions: dict[dict[float]] = dict()
+        self.elementDistributions: dict[dict[float]] = dict()
 
-        self.defaultDistributions = dict()
-        self.elementDistributions = dict()
-
-        self.thresholds = params['threshold_exceptions']
+        self.thresholds: dict[tuple[float, float]] = params['threshold_exceptions']
 
         # Initialise spectra natural abundance / distributions dict
-        dist_filePaths = [f for f in os.listdir(self.distributionDir) if f.endswith(".csv")]
+        dist_filePaths: list[str] = [f for f in os.listdir(self.distributionDir) if f.endswith(".csv")]
         for filepath in dist_filePaths:
             name = filepath[:-4]
             dist = pd.read_csv(f"{self.distributionDir}{filepath}", header=None)
@@ -1424,7 +1410,8 @@ class ExplorerGUI(QWidget):  # Acts just like QWidget class (like a template)
             self.spectraData[substance_name].updatePeaks(which='max')
             self.addTableData()
             self.toggleThreshold()
-            self.drawAnnotations(self.spectraData[substance_name])
+            self.drawAnnotations(self.spectraData[substance_name],
+                                 which='max' if self.maxTableOptionRadio.isChecked() else 'min')
             for element in self.spectraData.values():
                 if element.isMaxDrawn:
                     element.isGraphUpdating = True
@@ -1811,7 +1798,8 @@ class ExplorerGUI(QWidget):  # Acts just like QWidget class (like a template)
                 return
             maxPeaks = int(inputMaxPeaks.text())
             self.spectraData[substance_name].maxPeaks = maxPeaks
-            self.drawAnnotations(self.spectraData[substance_name])
+            self.drawAnnotations(self.spectraData[substance_name],
+                                 which='max' if self.maxTableOptionRadio.isChecked() else 'min')
         applyBtn.clicked.connect(onAccept)
 
         optionsWindow.setModal(False)
@@ -2598,7 +2586,7 @@ class ExplorerGUI(QWidget):  # Acts just like QWidget class (like a template)
         # Establishing plot count
         self.plotCount += 1
 
-        self.drawAnnotations(spectraData)
+        self.drawAnnotations(spectraData, which='max' if self.maxTableOptionRadio.isChecked() else 'min')
         self.toggleThreshold()
 
         self.ax.autoscale()  # Tidying up
@@ -2857,44 +2845,54 @@ class ExplorerGUI(QWidget):  # Acts just like QWidget class (like a template)
             self.orderByIntegral = self.byIntegralCheck.isChecked()
 
         for element in self.spectraData.values():
-            self.drawAnnotations(element)
+            self.drawAnnotations(element, which='max' if self.maxTableOptionRadio.isChecked() else 'min')
 
     def onPeakTableOptionChange(self) -> None:
 
         which = 'max' if self.maxTableOptionRadio.isChecked() else 'min'
         for spectra in self.spectraData.values():
             spectra.changePeakTableData(which)
+            self.drawAnnotations(spectra=spectra, which=which)
         self.addTableData(True)
 
-    def drawAnnotations(self, element: SpectraData) -> None:
+    def drawAnnotations(self, spectra: SpectraData, which: Literal['max', 'min'] = 'max') -> None:
         """
         ``drawAnnotations``
         -------------------
         Will plot each numbered annotation in the order of Integral or Peak Width.
 
         Args:
-            - ``element`` (SpectraData): The data for the element your annotating
+            - ``spectra`` (SpectraData): The data for the spectra your annotating
         """
         self.elementDataNames = []
 
-        if element.isAnnotationsDrawn:
-            for anno in element.annotations:
+        if spectra.isAnnotationsDrawn:
+            for anno in spectra.annotations:
                 anno.remove()
-            element.annotations.clear()
+            spectra.annotations.clear()
 
-        if element.maxima.size == 0:
+        if spectra.maxima.size == 0 and which == 'max':
+            return
+        if spectra.minima.size == 0 and which == 'min':
             return
 
-        if element.tableData is not None:
-            element.orderAnnotations(self.orderByIntegral)
+        if spectra.tableData is not None:
+            spectra.orderAnnotations(which=which, byIntegral=self.orderByIntegral)
 
-        gid = f"annotation-{element.name}-" + "ToF" if element.isToF else "Energy"
-        xy = element.maxima.T if element.annotationsOrder == {} or element.isDistAltered else element.annotationsOrder
-        if element.isDistAltered:
+        gid = f"annotation-{spectra.name}-" + "ToF" if spectra.isToF else "Energy"
+        if which == 'max':
+            xy = spectra.maxima.T if spectra.maxAnnotationOrder == {
+            } or spectra.isDistAltered else spectra.maxAnnotationOrder
+        else:
+            xy = spectra.minima.T if spectra.minAnnotationOrder == {
+            } or spectra.isDistAltered else spectra.minAnnotationOrder
+        if spectra.isDistAltered:
             maxDraw = len(xy)
         else:
-            maxDraw = element.maxPeaks if element.maxPeaks < element.numPeaks else element.numPeaks
-        element.annotations = [self.ax.annotate(text=f'{i}',
+            maxDraw = spectra.maxima.shape[1] if which == 'max' else spectra.minima.shape[1]
+            maxDraw = spectra.maxPeaks if maxDraw > spectra.maxPeaks else maxDraw
+
+        spectra.annotations = [self.ax.annotate(text=f'{i}',
                                                 xy=xy[i],
                                                 xytext=xy[i],
                                                 xycoords="data",
@@ -2908,11 +2906,11 @@ class ExplorerGUI(QWidget):  # Acts just like QWidget class (like a template)
                                for i in
                                (range(0, maxDraw) if type(xy) is np.ndarray else xy.keys())
                                if i < maxDraw]
-        if element.isGraphHidden or self.peakLabelCheck.isChecked():
-            for annotation in element.annotations:
+        if spectra.isGraphHidden or self.peakLabelCheck.isChecked():
+            for annotation in spectra.annotations:
                 annotation.set_visible(False)
-            element.isAnnotationsHidden = True
-        element.isAnnotationsDrawn = True
+            spectra.isAnnotationsHidden = True
+        spectra.isAnnotationsDrawn = True
         self.canvas.draw()
 
     def toggleAnnotations(self) -> None:
@@ -3175,16 +3173,20 @@ class ExplorerGUI(QWidget):  # Acts just like QWidget class (like a template)
             return
         if isMax:
             peaksX, peaksY = spectraData.maxima[0], spectraData.maxima[1]
+            self.maxTableOptionRadio.setChecked(True)
+            self.minTableOptionRadio.setChecked(False)
 
         else:
             peaksX, peaksY = spectraData.minima[0], spectraData.minima[1]
+            self.maxTableOptionRadio.setChecked(False)
+            self.minTableOptionRadio.setChecked(True)
 
         # ! Add element selection to Peak Detection menu
         # ! Change how points are then plotted
         # Redrawing graph and Peak Detection Limits
-        self.ax.set_visible(False)
-        spectraData.changePeakTableData('max' if isMax else 'min')
+        self.onPeakTableOptionChange()
         self.addTableData(reset=True)
+        self.ax.set_visible(False)
         if self.axPD is None:
             self.axPD = self.figure.add_subplot(111)
             if spectraData.isToF:
@@ -3235,7 +3237,7 @@ class ExplorerGUI(QWidget):  # Acts just like QWidget class (like a template)
                 gid=f"{spectraData.name}-PD"
             )
         self.toggleThreshold()
-        self.drawAnnotations(spectraData)
+        self.drawAnnotations(spectraData, which='max' if self.maxTableOptionRadio.isChecked() else 'min')
 
         if isMax:
             title = f"{spectraData.name}-{'ToF' if spectraData.isToF else 'Energy'}"
