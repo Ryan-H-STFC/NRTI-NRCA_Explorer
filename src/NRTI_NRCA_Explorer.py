@@ -47,21 +47,21 @@ from scipy.interpolate import interp1d
 from copy import deepcopy
 from pyparsing import Literal
 
-from spectra.SpectraDataStructure import SpectraData
-from myPyQt.ButtonDelegate import ButtonDelegate
-from myPyQt.CustomSortingProxy import CustomSortingProxy
-from myPyQt.ExtendedComboBox import ExtendedComboBox
-from myPyQt.ExtendedTableModel import ExtendedQTableModel
-from myPyQt.InputElementsDialog import InputElementsDialog
-from myPyQt.PeakWindow import PeakWindow
+from project.spectra.SpectraDataStructure import SpectraData
+from project.myPyQt.ButtonDelegate import ButtonDelegate
+from project.myPyQt.CustomSortingProxy import CustomSortingProxy
+from project.myPyQt.ExtendedComboBox import ExtendedComboBox
+from project.myPyQt.ExtendedTableModel import ExtendedQTableModel
+from project.myPyQt.InputElementsDialog import InputElementsDialog
+from project.myPyQt.PeakWindow import PeakWindow
 
-from myMatplotlib.CustomFigureCanvas import FigureCanvas
-from myMatplotlib.BlittedCursor import BlittedCursor
+from project.myMatplotlib.CustomFigureCanvas import FigureCanvas
+from project.myMatplotlib.BlittedCursor import BlittedCursor
 
-from helpers.getRandomColor import getRandomColor
-from helpers.getWidgets import getLayoutWidgets
-
-from settings import params
+from project.helpers.getRandomColor import getRandomColor
+from project.helpers.getWidgets import getLayoutWidgets
+from project.helpers.resourcePath import resource_path
+from project.settings import params
 
 # todo ------------------------------------------- Issues/Feature TODO list -------------------------------------------
 # todo - Add periodic table GUI for selection.
@@ -398,7 +398,7 @@ class ExplorerGUI(QWidget):  # Acts just like QWidget class (like a template)
         dist_filePaths: list[str] = [f for f in os.listdir(self.distributionDir) if f.endswith(".csv")]
         for filepath in dist_filePaths:
             name = filepath[:-4]
-            dist = pd.read_csv(f"{self.distributionDir}{filepath}", header=None)
+            dist = pd.read_csv(resource_path(f"{self.distributionDir}{filepath}"), header=None)
             self.defaultDistributions[name] = dict({d[0]: d[1] for d in dist.values})
 
         self.elementDistributions = deepcopy(self.defaultDistributions)
@@ -435,15 +435,15 @@ class ExplorerGUI(QWidget):  # Acts just like QWidget class (like a template)
         menubar = QMenuBar(self)
         menubar.setObjectName("menubar")
 
-        newAction = QAction(QIcon("./src/img/add-component.svg"), "&New", self)
+        newAction = QAction(QIcon(resource_path("./src/img/add-component.svg")), "&New", self)
         newAction.setShortcut("Ctrl+N")
         newAction.triggered.connect(self.clear)
 
-        importAction = QAction(QIcon("./src/img/upload-component.svg"), "&Import Data", self)
+        importAction = QAction(QIcon(resource_path("./src/img/upload-component.svg")), "&Import Data", self)
         importAction.setShortcut("Ctrl+I")
         importAction.triggered.connect(self.importData)
 
-        exportAction = QAction(QIcon("./src/img/export-component.svg"), "&Export Data", self)
+        exportAction = QAction(QIcon(resource_path("./src/img/export-component.svg")), "&Export Data", self)
         exportAction.setShortcut("Ctrl+S")
         exportAction.triggered.connect(self.exportData)
 
@@ -456,19 +456,19 @@ class ExplorerGUI(QWidget):  # Acts just like QWidget class (like a template)
 
         # ¦ --------------- MENU BAR - EDIT --------------
         # Creates menu bar and add actions
-        editpeakAction = QAction(QIcon("./src/img/edit-component.svg"), "&Edit Peak Limits", self)
+        editpeakAction = QAction(QIcon(resource_path("./src/img/edit-component.svg")), "&Edit Peak Limits", self)
         editpeakAction.setShortcut("Ctrl+E")
         editpeakAction.triggered.connect(self.editPeakLimits)
 
-        editThresholdAction = QAction(QIcon("./src/img/edit-component.svg"), "&Edit Threshold", self)
+        editThresholdAction = QAction(QIcon(resource_path("./src/img/edit-component.svg")), "&Edit Threshold", self)
         editThresholdAction.setShortcut("Ctrl+Shift+T")
         editThresholdAction.triggered.connect(self.editThresholdLimit)
 
-        editDistribution = QAction(QIcon("./src/img/edit-component.svg"), "&Edit Distribution", self)
+        editDistribution = QAction(QIcon(resource_path("./src/img/edit-component.svg")), "&Edit Distribution", self)
         editDistribution.setShortcut("Ctrl+Shift+D")
         editDistribution.triggered.connect(self.editDistribution)
 
-        editLength = QAction(QIcon("./src/img/edit-component.svg"), "&Edit Length", self)
+        editLength = QAction(QIcon(resource_path("./src/img/edit-component.svg")), "&Edit Length", self)
         editLength.setShortcut("Ctrl+Shift+L")
         editLength.triggered.connect(self.editLength)
         # fileMenu.addAction(saveAction)
@@ -504,15 +504,18 @@ class ExplorerGUI(QWidget):  # Acts just like QWidget class (like a template)
         viewMenu = menubar.addMenu("&View")
         appearenceMenu = viewMenu.addMenu("Appearence")
 
-        defaultAppearence = QAction(QIcon("./src/img/changeAppearence-component.svg"), "&Dark Theme", self)
+        defaultAppearence = QAction(
+            QIcon(resource_path("./src/img/changeAppearence-component.svg")), "&Dark Theme", self)
         defaultAppearence.setShortcut("Ctrl+Shift+1")
         defaultAppearence.triggered.connect(self.viewDarkStyle)
 
-        windowsAppearence = QAction(QIcon("./src/img/changeAppearence-component.svg"), "&Light Theme", self)
+        windowsAppearence = QAction(
+            QIcon(resource_path("./src/img/changeAppearence-component.svg")), "&Light Theme", self)
         windowsAppearence.setShortcut("Ctrl+Shift+2")
         windowsAppearence.triggered.connect(self.viewLightStyle)
 
-        highContrastAppearence = QAction(QIcon("./src/img/changeAppearence-component.svg"), "&High Contrast", self)
+        highContrastAppearence = QAction(
+            QIcon(resource_path("./src/img/changeAppearence-component.svg")), "&High Contrast", self)
         highContrastAppearence.setShortcut("Ctrl+Shift+3")
         highContrastAppearence.triggered.connect(self.viewHighContrastStyle)
 
@@ -526,11 +529,11 @@ class ExplorerGUI(QWidget):  # Acts just like QWidget class (like a template)
 
         optionsMenu = menubar.addMenu("&Options")
 
-        gridlineOptions = QAction(QIcon("./src/img/grid-component.svg"), "&Grid Line Settings", self)
+        gridlineOptions = QAction(QIcon(resource_path("./src/img/grid-component.svg")), "&Grid Line Settings", self)
         gridlineOptions.setShortcut("Ctrl+Shift+G")
         gridlineOptions.triggered.connect(self.gridLineOptions)
 
-        maxPeaksOption = QAction(QIcon("./src/img/edit-component.svg"), "&Max Peak Quantity", self)
+        maxPeaksOption = QAction(QIcon(resource_path("./src/img/edit-component.svg")), "&Max Peak Quantity", self)
         maxPeaksOption.setShortcut("Ctrl+Shift+Q")
         maxPeaksOption.triggered.connect(self.editMaxPeaks)
 
@@ -549,7 +552,7 @@ class ExplorerGUI(QWidget):  # Acts just like QWidget class (like a template)
 
         # Creating a list of substances stored in the NRCA database data directory
         self.spectraNames = [None]
-        for file in os.listdir(f"{self.graphDataDir}"):
+        for file in os.listdir(resource_path(f"{self.graphDataDir}")):
             filename = os.fsdecode(file)
             if ".csv" not in filename[-4:]:
                 continue
@@ -706,11 +709,11 @@ class ExplorerGUI(QWidget):  # Acts just like QWidget class (like a template)
             comboboxName=self.compoundCombobox.objectName()
         ))
         self.compoundNames = [None]
-        for file in os.listdir(params['dir_compoundGraphData']):
+        for file in os.listdir(resource_path(params['dir_compoundGraphData'])):
             filename = os.fsdecode(file)
             if ".csv" not in filename[-4:]:
                 continue
-            filename = filename[:-14]
+            filename = filename[:-4]
             self.compoundNames.append(filename)
         self.compoundCombobox.addItems(self.compoundNames)
         compoundCreaterLayout.addWidget(compoundLabel)
@@ -902,7 +905,7 @@ class ExplorerGUI(QWidget):  # Acts just like QWidget class (like a template)
         firstLimitX.setValidator(QRegExpValidator(QRegExp("[+-]?([0-9]*[.])?[0-9]+")))
         firstLimitBtn = QPushButton()
         firstLimitBtn.setObjectName("first")
-        firstLimitBtn.setIcon(QIcon(".\\src\\img\\add-component.svg"))
+        firstLimitBtn.setIcon(QIcon(resource_path(".\\src\\img\\add-component.svg")))
         firstLimitLayout.addWidget(firstLimitX)
         firstLimitLayout.addWidget(firstLimitBtn)
 
@@ -911,7 +914,7 @@ class ExplorerGUI(QWidget):  # Acts just like QWidget class (like a template)
         secondLimitX.setValidator(QRegExpValidator(QRegExp("[+-]?([0-9]*[.])?[0-9]+")))
         secondLimitBtn = QPushButton()
         secondLimitBtn.setObjectName("second")
-        secondLimitBtn.setIcon(QIcon(".\\src\\img\\add-component.svg"))
+        secondLimitBtn.setIcon(QIcon(resource_path(".\\src\\img\\add-component.svg")))
         secondLimitLayout.addWidget(secondLimitX)
         secondLimitLayout.addWidget(secondLimitBtn)
 
@@ -1853,7 +1856,7 @@ class ExplorerGUI(QWidget):  # Acts just like QWidget class (like a template)
             }
             name = f"""compound_{'-'.join([f'{name.split("-", 1)[1].split("_")[0]}[{str(dist)}]'
                                            for name, dist in compoundDist.items()])}_{compoundMode[0]}"""
-            weightedGraphData = {name: pd.read_csv(f"{self.graphDataDir}{name}.csv",
+            weightedGraphData = {name: pd.read_csv(resource_path(f"{self.graphDataDir}{name}.csv"),
                                                    names=['x', 'y'],
                                                    header=None) * [1, dist]
                                  for name, dist in compoundDist.items() if dist != 0}
@@ -1921,7 +1924,7 @@ class ExplorerGUI(QWidget):  # Acts just like QWidget class (like a template)
             newQLineEdit.setPlaceholderText("0")
             title = QLabel(f"{elementName}:")
             removeBtn = QPushButton()
-            removeBtn.setIcon(QIcon(".\\src\\img\\delete-component.svg"))
+            removeBtn.setIcon(QIcon(resource_path(".\\src\\img\\delete-component.svg")))
             removeBtn.setObjectName("compoundDelBtn")
             removeBtn.clicked.connect(lambda: onRemove(elementName))
             index = len(optionsWindow.children())
@@ -2229,20 +2232,23 @@ class ExplorerGUI(QWidget):  # Acts just like QWidget class (like a template)
         filepath = None
         for file in os.listdir(params['dir_peakInfo']):
             if self.selectionName in file:
-                filepath = f"""{
+                filepath = resource_path(f"""{
                     params['dir_peakInfo']
                     }{
                         file[:-7]
-                        }{'max' if self.maxTableOptionRadio.isChecked() else 'min'}.csv"""
+                        }{'max' if self.maxTableOptionRadio.isChecked() else 'min'}.csv""")
                 break
+
         try:
             for row in self.table_model.titleRows:
                 self.table.setItemDelegateForRow(row, None)
         except AttributeError:
             pass
         try:
+            if filepath is None:
+                raise ValueError
             self.table.blockSignals(True)
-            file = pd.read_csv(filepath, header=0)
+            file = pd.read_csv(resource_path(filepath), header=0)
             # Reset any changes to spans before displaying selection data.
             self.table.clearSpans()
 
@@ -2377,7 +2383,7 @@ class ExplorerGUI(QWidget):  # Acts just like QWidget class (like a template)
             peakInfoDir = f"{self.dir}data\\Peak information\\" if filepath is None else None
 
             try:
-                graphData = pd.read_csv(self.plotFilepath, header=None).iloc[:, :2]
+                graphData = pd.read_csv(resource_path(self.plotFilepath), header=None).iloc[:, :2]
             except pd.errors.EmptyDataError:
                 QMessageBox.warning(self, "Warning", "Selection has Empty Graph Data")
                 self.plottedSpectra.remove((self.selectionName, tof))
@@ -2396,7 +2402,7 @@ class ExplorerGUI(QWidget):  # Acts just like QWidget class (like a template)
                 pass
 
             try:
-                elementTableDataMax = pd.read_csv(f"{peakInfoDir}{spectraName}_tableData_max.csv")
+                elementTableDataMax = pd.read_csv(resource_path(f"{peakInfoDir}{spectraName}_tableData_max.csv"))
             except FileNotFoundError:
                 elementTableDataMax = pd.DataFrame(
                     columns=[
@@ -2420,7 +2426,7 @@ class ExplorerGUI(QWidget):  # Acts just like QWidget class (like a template)
             elementTableDataMax.index += 1
             elementTableDataMax.sort_index(inplace=True)
             try:
-                elementTableDataMin = pd.read_csv(f"{peakInfoDir}{spectraName}_tableData_min.csv")
+                elementTableDataMin = pd.read_csv(resource_path(f"{peakInfoDir}{spectraName}_tableData_min.csv"))
             except FileNotFoundError:
                 elementTableDataMin = pd.DataFrame(
                     columns=[
@@ -2851,6 +2857,9 @@ class ExplorerGUI(QWidget):  # Acts just like QWidget class (like a template)
 
         which = 'max' if self.maxTableOptionRadio.isChecked() else 'min'
         for spectra in self.spectraData.values():
+            if spectra.name == self.selectionName:
+                self.peaklabel.setText(
+                    f"Number of Peaks: {spectra.maxima.shape[1] if which == 'max' else spectra.minima.shape[1]}")
             spectra.changePeakTableData(which)
             self.drawAnnotations(spectra=spectra, which=which)
         self.addTableData(True)
@@ -3353,11 +3362,11 @@ def main() -> None:
     app = QtWidgets.QApplication(sys.argv)
     app.setObjectName('MainWindow')
 
-    QtGui.QFontDatabase.addApplicationFont('src\\fonts\\RobotoMono-Thin.ttf')
-    QtGui.QFontDatabase.addApplicationFont('src\\fonts\\RobotoMono-Regular.ttf')
-    QtGui.QFontDatabase.addApplicationFont('src\\fonts\\RobotoMono-Medium.ttf')
+    QtGui.QFontDatabase.addApplicationFont(resource_path('src\\fonts\\RobotoMono-Thin.ttf'))
+    QtGui.QFontDatabase.addApplicationFont(resource_path('src\\fonts\\RobotoMono-Regular.ttf'))
+    QtGui.QFontDatabase.addApplicationFont(resource_path('src\\fonts\\RobotoMono-Medium.ttf'))
 
-    app.setWindowIcon(QIcon("./src/img/final_logo.png"))
+    app.setWindowIcon(QIcon(resource_path("./src/img/final_logo.png")))
 
     _ = ExplorerGUI()
     app.exec()

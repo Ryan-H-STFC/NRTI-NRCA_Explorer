@@ -6,15 +6,16 @@ from scipy.interpolate import interp1d
 import pandas
 from pandas import DataFrame
 
-from spectra.PeakDetection import PeakDetector
-from helpers.getSpacedElements import getSpacedElements
-from helpers.fitBoxes import fitBoxes
-from helpers.getIndex import getIndex
-from helpers.integration import integrate_simps
-from helpers.nearestNumber import nearestnumber
-from helpers.smooth import smooth
+from project.spectra.PeakDetection import PeakDetector
+from project.helpers.getSpacedElements import getSpacedElements
+from project.helpers.fitBoxes import fitBoxes
+from project.helpers.getIndex import getIndex
+from project.helpers.integration import integrate_simps
+from project.helpers.nearestNumber import nearestnumber
+from project.helpers.resourcePath import resource_path
+from project.helpers.smooth import smooth
 from time import perf_counter
-from settings import params
+from project.settings import params
 
 
 dataFilepath = params['dir_graphData']
@@ -141,7 +142,8 @@ class SpectraData:
         try:
             if not self.isDistAltered:
                 name = self.name[8:] if 'element' in self.name else self.name
-                maxLimits = pandas.read_csv(f"{peakLimitFilepath}{name}_max.csv", names=['left', 'right'])
+                maxLimits = pandas.read_csv(resource_path(
+                    f"{peakLimitFilepath}{name}_max.csv"), names=['left', 'right'])
                 if self.isToF:
                     # Convert Limit coords to TOF
                     maxLimits['left'] = self.energyToTOF(maxLimits['left'], self.length)
@@ -172,7 +174,8 @@ class SpectraData:
             #     if self.maxima is not None and not self.maxima.size == 0:
             #         self.peakList = self.maxima.copy()
             #         self.graphDataProxy = self.graphData.copy()
-            #         # results = splitProcess(self.definePeak, [(peak[0], peak[1]) for peak in self.maxima.T], chunks=8)
+            #         # results = splitProcess(self.definePeak, [(peak[0], peak[1]) for peak in self.maxima.T],
+            # chunks=8)
             #         # for result in results.get():
             #         #     print(result)
             #         executor = ProcessPoolExecutor()
@@ -186,7 +189,7 @@ class SpectraData:
        # Grab Peak Limits for Min, otherwise calculate
 
         try:
-            minLimits = pandas.read_csv(f"{peakLimitFilepath}{name}_min.csv", names=['left', 'right'])
+            minLimits = pandas.read_csv(resource_path(f"{peakLimitFilepath}{name}_min.csv"), names=['left', 'right'])
             if self.isToF:
                 minLimits['left'] = self.energyToTOF(minLimits['left'], self.length)
                 minLimits['right'] = self.energyToTOF(minLimits['right'], self.length)
@@ -364,8 +367,8 @@ class SpectraData:
         if not self.isDistAltered and not ('element' in self.name or 'compound' in self.name):
             return
         plotType = "n-tot" if 'n-tot' in self.name else "n-g"
-        self.weightedIsoGraphData = {name: pandas.read_csv(
-            f"{params['dir_graphData']}{name}{'' if self.isCompound else '_'+plotType}.csv",
+        self.weightedIsoGraphData = {name: pandas.read_csv(resource_path(
+            f"{params['dir_graphData']}{name}{'' if self.isCompound else '_'+plotType}.csv"),
             names=['x', 'y'],
             header=None) * [1, dist]
             for name, dist in self.distributions.items() if dist != 0}
@@ -501,7 +504,7 @@ class SpectraData:
             tuple[float, str]: (Integral Value, Relevant Isotope)
         """
         if "element" in self.name:
-            isoGraphData = {name: pandas.read_csv(f"{dataFilepath}{name}_{self.name.split('_')[-1]}.csv",
+            isoGraphData = {name: pandas.read_csv(resource_path(f"{dataFilepath}{name}_{self.name.split('_')[-1]}.csv"),
                                                   names=['x', 'y'],
                                                   header=None)
                             for name, dist in self.distributions.items() if dist != 0}

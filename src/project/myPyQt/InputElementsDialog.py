@@ -4,7 +4,7 @@ from PyQt6.QtWidgets import (
     QFormLayout,
     QVBoxLayout
 )
-from myPyQt.ExtendedComboBox import ExtendedComboBox
+from project.myPyQt.ExtendedComboBox import ExtendedComboBox
 
 
 class InputElementsDialog(QDialog):

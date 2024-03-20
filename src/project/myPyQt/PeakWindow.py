@@ -21,10 +21,10 @@ import matplotlib.rcsetup
 import numpy as np
 import pandas as pd
 
-from helpers.nearestNumber import nearestnumber
-from myMatplotlib.CustomFigureCanvas import FigureCanvas
-from myPyQt.ExtendedTableModel import ExtendedQTableModel
-from myPyQt.InputElementsDialog import InputElementsDialog
+from project.helpers.nearestNumber import nearestnumber
+from project.myMatplotlib.CustomFigureCanvas import FigureCanvas
+from project.myPyQt.ExtendedTableModel import ExtendedQTableModel
+from project.myPyQt.InputElementsDialog import InputElementsDialog
 
 matplotlib.use("QtAgg")
 

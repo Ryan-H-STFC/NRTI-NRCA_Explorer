@@ -4,7 +4,7 @@ from pandas import DataFrame
 from pyparsing import Literal
 from scipy.integrate import trapezoid, simpson
 
-from helpers.nearestNumber import nearestnumber
+from project.helpers.nearestNumber import nearestnumber
 
 
 def integrate_trapz(graphData: DataFrame, leftLimit: float, rightLimit: float) -> float:

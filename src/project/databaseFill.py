@@ -1,7 +1,8 @@
 import os
 import pandas as pd
-from spectra.SpectraDataStructure import SpectraData
-from settings import params
+from project.spectra.SpectraDataStructure import SpectraData
+from project.helpers.resourcePath import resource_path
+from project.settings import params
 
 from multiprocessing import Pool
 
@@ -9,7 +10,7 @@ dist_filePaths: list[str] = [f for f in os.listdir(params['dir_distribution']) i
 defaultDistributions: dict = {}
 for filepath in dist_filePaths:
     name = filepath[:-4]
-    dist = pd.read_csv(f"{params['dir_distribution']}{filepath}", header=None)
+    dist = pd.read_csv(resource_path(f"{params['dir_distribution']}{filepath}"), header=None)
     defaultDistributions[name] = dict({d[0]: d[1] for d in dist.values})
 
 
@@ -29,7 +30,7 @@ def exportDatabaseValues(name):
     print(f"Starting - {name}")
     filepath = f"{params['dir_graphData']}{name}.csv"
     try:
-        graphData = pd.read_csv(filepath, header=None)
+        graphData = pd.read_csv(resource_path(filepath), header=None)
     except pd.errors.EmptyDataError:
         return
     split = name.split("-")

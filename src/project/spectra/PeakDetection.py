@@ -2,7 +2,7 @@ from __future__ import annotations
 from pandas import DataFrame
 import scipy as sp
 
-from settings import params
+from project.settings import params
 
 
 class PeakDetector:
